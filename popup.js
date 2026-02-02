@@ -8,18 +8,25 @@ document.addEventListener('DOMContentLoaded', function() {
   
   startBtn.addEventListener('click', async function() {
     const title = document.getElementById('title').value.trim();
+    const company = document.getElementById('company').value.trim();
     const location = document.getElementById('location').value.trim();
     const pages = parseInt(document.getElementById('pages').value) || 1;
     
-    if (!title) {
-      showStatus('Please enter a job title', 'error');
+    if (!title && !company) {
+      showStatus('Please enter a Job Title or Company', 'error');
       return;
     }
     
     // Build the search query
-    let query = `site:linkedin.com/in ${title}`;
+    let query = `site:linkedin.com/in`;
+    if (title) {
+      query += ` "${title}"`;
+    }
+    if (company) {
+      query += ` "${company}"`;
+    }
     if (location) {
-      query += ` ${location}`;
+      query += ` "${location}"`;
     }
     
     // Store the pagination settings in chrome.storage
@@ -53,8 +60,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Convert to CSV
     const csv = convertToCSV(profiles);
     
-    // Create and download the file
-    const blob = new Blob([csv], { type: 'text/csv' });
+    // Create and download the file with UTF-8 BOM for Excel compatibility
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

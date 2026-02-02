@@ -18,19 +18,15 @@ async function init() {
     const maxPages = settings.maxPages || 1;
     
     if (currentPage < maxPages) {
-      // Wait 3 seconds and click next
+      // Wait 3-6 seconds (randomized to avoid bot detection) and click next
+      const randomDelay = Math.floor(Math.random() * 3000) + 3000;
       setTimeout(() => {
         clickNextButton(currentPage + 1);
-      }, 3000);
+      }, randomDelay);
     } else {
       // Scraping complete
       await chrome.storage.local.set({ isScrapingActive: false });
       updateFloatingDiv('Scraping complete!', true);
-      setTimeout(() => {
-        if (floatingDiv) {
-          floatingDiv.remove();
-        }
-      }, 3000);
     }
   }
 }
@@ -59,14 +55,42 @@ function createFloatingDiv() {
     min-width: 200px;
     text-align: center;
   `;
-  floatingDiv.textContent = 'Initializing scraper...';
+  
+  // Create close button
+  const closeBtn = document.createElement('span');
+  closeBtn.textContent = '×';
+  closeBtn.style.cssText = `
+    position: absolute;
+    top: 5px;
+    right: 10px;
+    font-size: 20px;
+    cursor: pointer;
+    font-weight: bold;
+  `;
+  closeBtn.onclick = () => {
+    if (floatingDiv) {
+      floatingDiv.remove();
+      floatingDiv = null;
+    }
+  };
+  
+  floatingDiv.appendChild(closeBtn);
+  
+  const messageSpan = document.createElement('span');
+  messageSpan.textContent = 'Initializing scraper...';
+  messageSpan.id = 'scraper-message';
+  floatingDiv.appendChild(messageSpan);
+  
   document.body.appendChild(floatingDiv);
 }
 
 // Update floating div with profile count
 function updateFloatingDiv(message, isComplete = false) {
   if (floatingDiv) {
-    floatingDiv.textContent = message;
+    const messageSpan = floatingDiv.querySelector('#scraper-message');
+    if (messageSpan) {
+      messageSpan.textContent = message;
+    }
     if (isComplete) {
       floatingDiv.style.background = 'linear-gradient(135deg, #28a745 0%, #34ce57 100%)';
     }
@@ -122,7 +146,11 @@ async function scrapeProfiles() {
 
 // Click the next button to go to next page
 async function clickNextButton(nextPageNumber) {
-  const nextButton = document.getElementById('pnnext');
+  // Try primary selector first, then fallback
+  let nextButton = document.getElementById('pnnext');
+  if (!nextButton) {
+    nextButton = document.querySelector('a[aria-label="Next page"]');
+  }
   
   if (nextButton && !nextButton.disabled) {
     // Update current page
@@ -135,11 +163,6 @@ async function clickNextButton(nextPageNumber) {
     // No more pages
     await chrome.storage.local.set({ isScrapingActive: false });
     updateFloatingDiv('No more pages', true);
-    setTimeout(() => {
-      if (floatingDiv) {
-        floatingDiv.remove();
-      }
-    }, 3000);
   }
 }
 
