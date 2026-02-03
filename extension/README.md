@@ -1,6 +1,6 @@
 # LinkedIn X-Ray Scraper
 
-A Manifest V3 Chrome Extension that scrapes LinkedIn profiles from Google search results.
+A Manifest V3 Chrome Extension that scrapes LinkedIn profiles from Google search results
 
 ## Features
 
