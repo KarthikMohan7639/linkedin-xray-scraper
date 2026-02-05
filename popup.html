@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Duplicate Remover</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>LinkedIn Duplicate Remover</h1>
+
+    <!-- Section 1: Master Database - Card Layout -->
+    <div class="card">
+      <div class="card-header">
+        <span class="step-number">1</span>
+        <div>
+          <div class="card-title">Upload Master Sheet (Google Sheet Export)</div>
+          <div class="card-subtitle">Your existing database of LinkedIn contacts</div>
+        </div>
+      </div>
+      <div class="file-input-wrapper">
+        <input 
+          type="file" 
+          id="masterFile" 
+          accept=".csv,.xlsx"
+        >
+      </div>
+      <p class="file-hint">Accepts .csv or .xlsx files</p>
+    </div>
+
+    <!-- Section 2: New Search Results - Card Layout -->
+    <div class="card">
+      <div class="card-header">
+        <span class="step-number">2</span>
+        <div>
+          <div class="card-title">Upload LinkedIn Search Results</div>
+          <div class="card-subtitle">New profiles to check for duplicates</div>
+        </div>
+      </div>
+      <div class="file-input-wrapper">
+        <input 
+          type="file" 
+          id="searchResultsFiles" 
+          accept=".csv"
+          multiple
+        >
+      </div>
+      <p class="file-hint">Accepts multiple .csv files</p>
+    </div>
+
+    <!-- Section 3: Action Button -->
+    <div class="action-section">
+      <button id="processBtn">
+        <span class="btn-icon">🚀</span>
+        <span class="spinner"></span>
+        <span class="btn-text">Process & Export Unique Records</span>
+      </button>
+    </div>
+
+    <!-- Status Area -->
+    <div class="status-area">
+      <div class="status-header">📋 Status Log</div>
+      <div id="statusLog">
+        <div class="log-entry log-info">Ready. Please upload your files to begin.</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      LinkedIn Duplicate Remover v1.0
+    </div>
+  </div>
+
+  <!-- SheetJS Library -->
+  <script src="libs/xlsx.full.min.js"></script>
+  <!-- Main Script -->
+  <script src="popup.js"></script>
+</body>
+</html>
