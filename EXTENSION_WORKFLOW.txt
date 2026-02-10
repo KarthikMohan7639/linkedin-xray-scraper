@@ -1,0 +1,669 @@
+================================================================================
+LINKEDIN DUPLICATE REMOVER - CHROME EXTENSION
+Workflow & Integration Documentation
+Version: 1.0.0
+================================================================================
+
+1. EXTENSION OVERVIEW
+================================================================================
+
+Name: LinkedIn Duplicate Remover
+Purpose: Remove duplicate LinkedIn profiles by comparing new search results 
+         against a master database
+Type: Chrome Extension (Manifest V3)
+License: Open for integration
+
+The extension performs a SET DIFFERENCE operation:
+  Result = (New Search Results) - (Master Database)
+  
+Identifies duplicates using LinkedIn Profile IDs extracted from URLs, ensuring 
+only truly unique profiles are exported.
+
+
+2. MANIFEST CONFIGURATION
+================================================================================
+
+File: manifest.json
+
+Permissions Required:
+  - activeTab      : Access the current active tab
+  - scripting       : Execute JavaScript in web context
+
+Action Type: Browser popup interface
+User Interface: popup.html (popup window on extension icon click)
+
+Key Configuration:
+{
+  "manifest_version": 3,
+  "name": "LinkedIn Duplicate Remover",
+  "version": "1.0.0",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "LinkedIn Duplicate Remover"
+  }
+}
+
+
+3. USER INTERFACE FLOW
+================================================================================
+
+The popup.html presents a 2-step workflow:
+
+STEP 1: Upload Master Database
+  - Input: Single file (.csv or .xlsx)
+  - Purpose: Existing LinkedIn contacts database
+  - Source: Typically exported from Google Sheets or CRM
+  - Processing: Parsed into row objects with URL column auto-detection
+
+STEP 2: Upload New Search Results  
+  - Input: Multiple files (.csv format)
+  - Purpose: Recently scraped/collected LinkedIn profiles to check
+  - Processing: Each file processed individually and checked against master
+
+ACTION BUTTON: Process & Export Unique Records
+  - Triggers: Main data processing workflow
+  - Output: Single .xlsx file with unique records
+  - Filename Format: Cleaned_Leads_YYYY-MM-DD.xlsx
+
+STATUS LOG: Real-time Processing Updates
+  - Displays: Step-by-step execution log
+  - Color Codes: info (gray), success (green), error (red)
+  - Auto-scrolls: Latest messages visible
+
+
+4. DATA PROCESSING WORKFLOW
+================================================================================
+
+PHASE 1: INITIALIZATION & VALIDATION
+  ├─ User clicks "Process & Export Unique Records"
+  ├─ Validate master file uploaded
+  ├─ Validate at least one search results file uploaded
+  └─ Initialize processing flag and UI feedback
+
+PHASE 2: MASTER DATABASE PARSING
+  ├─ Read master file (CSV or XLSX format)
+  ├─ Parse using SheetJS (XLSX.read -> sheet_to_json)
+  ├─ Auto-detect LinkedIn URL column
+  │   └─ Scans first 10 rows for "linkedin.com/in/" pattern
+  ├─ Extract LinkedIn Profile IDs from URLs
+  │   └─ Uses regex: /\/in\/([^\/\?#]+)/i
+  ├─ Normalize IDs: lowercase, URL decode, trim whitespace
+  └─ Build Set<String> of master LinkedIn IDs (O(1) lookup)
+
+PHASE 3: SEARCH RESULTS PROCESSING (Per File)
+  ├─ For each uploaded search results file:
+  │   ├─ Parse file (CSV or XLSX)
+  │   ├─ Auto-detect LinkedIn URL column
+  │   ├─ For each row in file:
+  │   │   ├─ Extract LinkedIn ID
+  │   │   ├─ Check if ID exists in master set
+  │   │   ├─ If NOT in master: Add to export list (UNIQUE)
+  │   │   └─ If in master: Skip (DUPLICATE)
+  │   └─ Log: unique count & duplicate count for file
+  └─ Repeat for all uploaded files
+
+PHASE 4: EXPORT & DOWNLOAD
+  ├─ Check if any unique records found
+  ├─ Create new XLSX workbook
+  ├─ Convert export list to sheet (json_to_sheet)
+  ├─ Generate filename: Cleaned_Leads_YYYY-MM-DD.xlsx
+  ├─ Trigger browser download
+  └─ Log completion status
+
+
+5. KEY HELPER FUNCTIONS
+================================================================================
+
+Function: extractLinkedInID(url)
+  Input: String (LinkedIn URL in any format)
+  Output: String|null (normalized LinkedIn profile ID or null)
+  Logic:
+    1. Validate input is non-empty string
+    2. Apply regex: /\/in\/([^\/\?#]+)/i
+    3. Extract matched group
+    4. Decode URI component (handle %20, etc.)
+    5. Normalize to lowercase
+    6. Return trimmed ID or null if no match
+  
+  Example Conversions:
+    https://www.linkedin.com/in/john-doe-123/     → john-doe-123
+    linkedin.com/in/jane-smith?locale=en          → jane-smith
+    /in/karthik#tab=experience                     → karthik
+
+Function: findUrlColumn(rowObject)
+  Input: Object (single row from parsed data)
+  Output: String|null (column name containing LinkedIn URL)
+  Logic:
+    1. Iterate through all keys in row object
+    2. Check if value contains 'linkedin.com/in/'
+    3. Return first matching column name
+  Purpose: Handle variations in column naming
+
+Function: detectUrlColumnFromData(rows)
+  Input: Array (array of row objects)
+  Output: String|null (detected LinkedIn URL column)
+  Logic:
+    1. Sample first 10 rows (or all if fewer)
+    2. For each row, call findUrlColumn()
+    3. Return first non-null result
+  Purpose: Auto-detect URL column without user input
+
+Function: parseFile(file)
+  Input: File object (from file input)
+  Output: Promise<Array> (array of row objects)
+  Logic:
+    1. Read file as binary string
+    2. Parse with SheetJS: XLSX.read(data, {type: 'binary'})
+    3. Get first worksheet from workbook
+    4. Convert to JSON: sheet_to_json(worksheet)
+    5. Return array or reject on error
+  Supports: .csv, .xlsx file formats
+
+Function: log(message, type)
+  Input: String message, String type ('info'|'success'|'error')
+  Output: void
+  Logic:
+    1. Create div element with class "log-entry log-{type}"
+    2. Set text with timestamp
+    3. Append to status log container
+    4. Auto-scroll to bottom
+  Purpose: Real-time UI feedback
+
+
+6. DATA STRUCTURES
+================================================================================
+
+Master ID Set
+  Type: Set<String>
+  Contains: Normalized LinkedIn profile IDs from master database
+  Usage: O(1) lookup to check if ID exists
+  Building Process:
+    - Extract LinkedIn ID from each master row
+    - Add to Set
+    - Size = count of valid LinkedIn IDs in master
+
+Export Array
+  Type: Array<Object>
+  Contains: Row objects (from new search results) NOT in master
+  Fields: All original columns from source files
+  Building Process:
+    - For each new search result row
+    - If LinkedIn ID not in master set
+    - Add entire row object to export array
+
+Row Object Format (from csv/xlsx parsing)
+  Example:
+  {
+    "First Name": "John",
+    "Last Name": "Doe",
+    "Email": "john.doe@example.com",
+    "LinkedIn URL": "https://linkedin.com/in/john-doe-123/",
+    "Company": "Tech Corp",
+    ...other columns...
+  }
+
+
+7. FILE INPUT/OUTPUT SPECIFICATIONS
+================================================================================
+
+INPUT FILES:
+
+Master Database:
+  - Format: CSV or XLSX
+  - Required Columns: At least one LinkedIn URL column
+  - Column Name Variants: "URL", "Profile Link", "LinkedIn URL", etc.
+  - Typical Source: Google Sheets export, CRM export
+  - Multiple Files: No (single file only)
+
+Search Results Files:
+  - Format: CSV (required for multiple file support)
+  - Required Columns: At least one LinkedIn URL column  
+  - Column Name Variants: Same as master
+  - Typical Source: LinkedIn search export, scraping tool output
+  - Multiple Files: Yes (processed sequentially)
+
+OUTPUT FILE:
+
+Generated Export:
+  - Format: XLSX (Excel format)
+  - Worksheet Name: "Unique Records"
+  - Filename: Cleaned_Leads_YYYY-MM-DD.xlsx
+  - Contents: Only rows from search results NOT in master database
+  - All Columns: Preserved from original search result files
+  - Column Order: Matches source file column order
+
+Example Output Structure:
+  | First Name | Last Name | Email | LinkedIn URL | Company |
+  |------------|-----------|-------|--------------|---------|
+  | Jane | Smith | jane@ex.com | linkedin.com/in/jane-smith | ... |
+  | Mike | Johnson | mike@ex.com | linkedin.com/in/mike-o- | ... |
+
+
+8. DUPLICATE MATCHING LOGIC
+================================================================================
+
+Matching Algorithm: LinkedIn ID Extraction & Comparison
+
+Step 1: Normalize All IDs
+  - Extract from URLs using regex pattern
+  - Decode URI components (%20 → space, etc.)
+  - Convert to lowercase
+  - Trim whitespace
+
+Step 2: Build Master ID Set
+  - Create Set<String> for O(1) lookup performance
+  - Add all normalized master IDs
+
+Step 3: Compare New Records
+  - For each new record:
+    - Extract and normalize LinkedIn ID
+    - Check: Set.has(linkedInId)
+    - If true: DUPLICATE (skip)
+    - If false: UNIQUE (export)
+
+Matching Priority (if multiple URL-like columns exist):
+  1. Auto-detected column (contains "linkedin.com/in/")
+  2. First matching column found
+  3. All columns (fallback if no detection)
+
+Case Insensitivity:
+  - All IDs converted to lowercase
+  - "John-Doe-123" == "john-doe-123" (DUPLICATE)
+  - "JANE-SMITH" == "jane-smith" (DUPLICATE)
+
+URL Format Flexibility:
+  All these resolve to same LinkedIn ID:
+  - https://www.linkedin.com/in/profile-id/
+  - linkedin.com/in/profile-id?locale=en_US
+  - /in/profile-id#tab=skills
+  - linkedin.com/in/profile-id
+
+
+9. ERROR HANDLING & LOGGING
+================================================================================
+
+User Visible Errors:
+
+1. Missing Master File
+   Message: "Error: Please upload a master database file."
+   Type: Validation error
+   Action: User must upload file and retry
+
+2. Missing Search Results Files
+   Message: "Error: Please upload at least one search results file."
+   Type: Validation error
+   Action: User must upload files and retry
+
+3. File Parse Errors
+   Message: "Failed to parse file: [filename]"
+   Type: Runtime error
+   Action: Check file format, retry or use different file
+
+4. No LinkedIn URL Column Detected
+   Message: "Warning: No LinkedIn URL column detected in [filename]"
+   Type: Warning (non-blocking)
+   Action: Extension continues but may not match duplicates correctly
+
+All Errors Logged:
+  - Timestamp included in log entry
+  - Error class: "log-error" (displayed in red)
+  - Captured in browser console (console.error)
+
+
+10. PROCESSING STATISTICS
+================================================================================
+
+Logged During Processing:
+
+Master Database:
+  - "Master database loaded: {count} rows"
+  - "Detected URL column in master: "{column_name}""
+  - "Found {count} LinkedIn IDs in Master database"
+
+Per Search Results File:
+  - "Processing file {i}/{total}: {filename}..."
+  - "File contains {count} rows"
+  - "Detected URL column: "{column_name}""
+  - "→ {unique_count} unique, {duplicate_count} duplicates"
+
+Overall Statistics:
+  - "Total records processed: {count}"
+  - "Total duplicates removed: {count}"
+  - "Unique records to export: {count}"
+
+Export Status:
+  - "Exporting unique records..."
+  - "Export complete! File: {filename}"
+  - "Check your downloads folder."
+
+If No Unique Records:
+  - "No unique records found. All entries already exist in master database."
+
+
+11. DEPENDENCIES
+================================================================================
+
+SheetJS (XLSX Library)
+  - File: libs/xlsx.full.min.js
+  - Version: 0.20.1 (or compatible)
+  - Source: https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js
+  - Functions Used:
+    * XLSX.read(data, options) - Parse binary file data
+    * XLSX.utils.sheet_to_json(sheet) - Convert sheet to JSON
+    * XLSX.utils.json_to_sheet(data) - Convert JSON to sheet
+    * XLSX.utils.book_new() - Create new workbook
+    * XLSX.utils.book_append_sheet(wb, sheet, name) - Add sheet to workbook
+    * XLSX.writeFile(workbook, filename) - Trigger browser download
+
+Browser APIs:
+  - FileReader API (readAsBinaryString)
+  - File API (File object handling)
+  - DOM APIs (element manipulation, event listeners)
+  - Blob/Download APIs (file export)
+
+
+12. INTEGRATION POINTS FOR OTHER EXTENSIONS
+================================================================================
+
+For extensions looking to integrate with this extension:
+
+Data Exchange Interface:
+
+1. File Format Standard
+   - Support CSV and XLSX formats
+   - Ensure LinkedIn URL column present
+   - Column naming flexibility built in (auto-detection)
+
+2. LinkedIn ID Extraction
+   - Share the extractLinkedInID() function
+   - Can be exposed via message passing API
+   - Pattern: /\/in\/([^\/\?#]+)/i
+
+3. Duplicate Detection API (Recommended)
+   - Could expose: checkIfDuplicate(linkedInUrl, masterSet)
+   - Return: Boolean (true if duplicate, false if unique)
+   - Use: chrome.runtime.connect() or chrome.runtime.sendMessage()
+
+4. Event Notifications
+   - Export complete: chrome.runtime.onMessage
+   - New file processed: Custom event system
+   - Duplicate count updated: Progress callback
+
+5. Shared Data Storage
+   - Master ID Set could be shared via chrome.storage.sync
+   - Allow other extensions to subscribe to updates
+   - Centralized duplicate database concept
+
+6. Extend URL Column Detection
+   - Pass custom column detection logic via message API
+   - Override default linkedin.com/in/ pattern
+   - Support custom LinkedIn ID formats
+
+Integration Methods:
+
+Method 1: File Input/Output
+  - Other extension generates CSV/XLSX
+  - This extension processes
+  - Output file consumed by other extension
+  - Simplest, no code coupling
+
+Method 2: Message Passing API (chrome.runtime.sendMessage)
+  Example:
+  chrome.runtime.sendMessage(EXTENSION_ID, {
+    action: "checkDuplicate",
+    linkedInUrl: "https://linkedin.com/in/john-doe/"
+  }, response => {
+    console.log("Is duplicate:", response.isDuplicate);
+  });
+
+Method 3: Shared Storage
+  - Use chrome.storage.sync for master ID set
+  - Other extensions query the storage
+  - Real-time, no file exchange needed
+  - Requires coordinated schema design
+
+Method 4: Content Script Injection
+  - This extension could inject duplicate indicators on LinkedIn
+  - Other extensions monitor DOM for these indicators
+  - Visual feedback integration
+
+
+13. PERFORMANCE CHARACTERISTICS
+================================================================================
+
+Time Complexity:
+  - Build Master Set: O(n) where n = master records
+  - Process Search Results: O(m*log(m)) where m = search records
+    (log(m) from Set.has() operations)
+  - Overall: O(n + m)
+
+Space Complexity:
+  - Master ID Set: O(n) where n = master records
+  - Export Array: O(k) where k = unique records
+  - Total: O(n + k)
+
+Practical Performance:
+  - Master database 1000 records: <100ms parsing
+  - Search results 500 records: <50ms processing
+  - Export 100 unique records: <10ms
+  - Total typical flow: <1 second
+
+Optimization Notes:
+  - Set for O(1) duplicate lookup (vs. Array O(n))
+  - SheetJS optimized for large datasets
+  - Single pass through search results (no sorting)
+  - No memory copies of large data structures
+
+
+14. SECURITY CONSIDERATIONS
+================================================================================
+
+Data Privacy:
+  - No data sent to external servers
+  - All processing done locally in browser
+  - No analytics or telemetry
+  - Files not cached after processing
+
+User Controls:
+  - Extension requires activeTab + scripting permissions
+  - User explicitly selects files to upload
+  - Downloaded file is under user's control
+
+Potential Risks:
+  - Malformed CSV/XLSX could cause parsing errors
+  - Large files (>10MB) may cause browser slowness
+  - LinkedIn ID extraction depends on URL format
+  - No validation of file contents (trust user input)
+
+Recommendations:
+  - Add file size validation (max 10MB)
+  - Handle corrupted files gracefully
+  - Sanitize column names before display
+  - Consider adding master database encryption
+
+
+15. TROUBLESHOOTING GUIDE
+================================================================================
+
+Issue: "Master database loaded: 0 rows"
+  Cause: File parse failed or empty file
+  Solution: Check file format is valid CSV or XLSX
+           Verify file not corrupted
+           Try re-exporting from source
+
+Issue: "No LinkedIn URL column detected"
+  Cause: Column name doesn't contain "linkedin.com/in/"
+  Solution: Ensure LinkedIn profile URLs present in file
+           Check column contains full URLs, not just profile names
+           Rename column to include "linkedin" if needed
+
+Issue: "No unique records found"
+  Cause: All search results already in master database
+  Solution: This is expected behavior
+           Master database is comprehensive
+           Consider adding more new search results
+           Verify correct files were uploaded
+
+Issue: File download doesn't start
+  Cause: Browser download settings or popup blocked
+  Solution: Check browser popup/download blocks
+           Try in incognito mode
+           Clear browser cache
+
+Issue: Extension crashes during processing
+  Cause: File too large or corrupted data
+  Solution: Reduce file sizes (process in batches)
+           Validate CSV/XLSX format
+           Check system memory and restart browser
+
+
+16. FUTURE ENHANCEMENT IDEAS
+================================================================================
+
+1. Additional Matching Fields
+   - Match by email in addition to LinkedIn ID
+   - Match by phone number
+   - Fuzzy matching for names
+
+2. Advanced Filtering
+   - Filter by date range
+   - Filter by company name
+   - Filter by job title
+
+3. Data Validation
+   - Email format validation
+   - Phone number normalization
+   - Profile completeness scores
+
+4. Batch Processing
+   - Support for very large files
+   - Progress bar for long operations
+   - Scheduled background processing
+
+5. Storage Integration
+   - Save master database in extension storage
+   - Auto-update from external sources
+   - Version control for master database
+
+6. API Exposure
+   - REST endpoint for duplicate checking
+   - Webhook notifications on new duplicates
+   - CSV import/export API
+
+7. Advanced Logging
+   - Detailed matching report
+   - Audit trail of changes
+   - Export processing logs
+
+8. UI Enhancements
+   - Drag-and-drop file upload
+   - Preview of results before export
+   - Match confidence scores
+
+
+17. TECHNICAL STACK SUMMARY
+================================================================================
+
+Frontend:
+  - HTML5 (popup interface)
+  - CSS3 (styling and responsive design)
+  - Vanilla JavaScript ES6+ (no frameworks)
+
+Libraries:
+  - SheetJS (XLSX) v0.20.1+ (file parsing and export)
+
+Browser APIs:
+  - Chrome Extension Manifest V3
+  - FileReader API
+  - File API
+  - Blob API
+  - Download API
+
+Build/Deploy:
+  - No build process required
+  - Load unpacked in Chrome developer mode
+  - Or package as .crx file for distribution
+
+
+18. VERSION HISTORY
+================================================================================
+
+Version 1.0.0 (Initial Release)
+  Features:
+    - LinkedIn duplicate detection
+    - Master database comparison
+    - Auto-column detection
+    - CSV and XLSX support
+    - Real-time status logging
+    - XLSX export with date stamp
+  
+  Known Limitations:
+    - Single master file only
+    - Multiple search result files processed sequentially
+    - No partial match support (exact ID match only)
+    - No built-in data storage/history
+
+
+19. CONTACT & SUPPORT
+================================================================================
+
+For integration questions:
+  - Review integration points (Section 12)
+  - Test with sample files first
+  - Use browser console for debugging
+  - Check status log for error messages
+
+For bug reports:
+  - Document exact steps to reproduce
+  - Include sample input files (anonymized)
+  - Share browser console errors
+  - Specify Chrome version
+
+For feature requests:
+  - Reference Section 16 for planned enhancements
+  - Consider performance impact
+  - Evaluate user complexity trade-offs
+
+
+================================================================================
+End of Document
+================================================================================
+
+Quick Reference Commands:
+
+Parse File:
+  parseFile(fileObject) → Promise<Array of rows>
+
+Extract LinkedIn ID:
+  extractLinkedInID(urlString) → String|null
+
+Detect URL Column:
+  detectUrlColumnFromData(rowsArray) → String|null
+
+Find URL Column in Row:
+  findUrlColumn(rowObject) → String|null
+
+Add Log Message:
+  log(message, type) → void
+  Types: 'info', 'success', 'error'
+
+Clear Log:
+  clearLog() → void
+
+
+Integration Checklist:
+
+☐ Understand core workflow (Section 4)
+☐ Review input file specifications (Section 7)
+☐ Check data structure format (Section 6)
+☐ Identify integration method (Section 12)
+☐ Test with sample files
+☐ Implement message passing if needed
+☐ Handle error responses
+☐ Document integration in usage guide
+☐ Add extension to manifest permissions
+☐ Test with actual data volume
+
+
+================================================================================
